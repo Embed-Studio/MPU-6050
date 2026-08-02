@@ -10,6 +10,8 @@
 /* Private includes ----------------------------------------------------------*/
 #include "mpu6050.h"
 
+#include <math.h>
+
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
@@ -115,6 +117,47 @@ HAL_StatusTypeDef MPU6050_Read_All(I2C_HandleTypeDef *hi2c, MPU6050_t *data)
     data->gyro_z  = (int16_t)((buffer[12] << 8) | buffer[13]);
 
     return HAL_OK;
+}
+
+/**
+ * @brief  Loads the compiled-in calibration constants.
+ */
+void MPU6050_Calibration_Init(MPU6050_Calibration_t *cal)
+{
+    cal->scale[0] = MPU6050_ACCEL_SCALE_X_DEFAULT;
+    cal->scale[1] = MPU6050_ACCEL_SCALE_Y_DEFAULT;
+    cal->scale[2] = MPU6050_ACCEL_SCALE_Z_DEFAULT;
+
+    cal->bias[0] = MPU6050_ACCEL_BIAS_X_DEFAULT;
+    cal->bias[1] = MPU6050_ACCEL_BIAS_Y_DEFAULT;
+    cal->bias[2] = MPU6050_ACCEL_BIAS_Z_DEFAULT;
+}
+
+/**
+ * @brief  Converts one raw sample to g: acceleration = (raw - bias) / scale.
+ */
+void MPU6050_Apply_Calibration(const MPU6050_Calibration_t *cal,
+                               const MPU6050_t *raw,
+                               MPU6050_Accel_g_t *out)
+{
+    out->x = ((float)raw->accel_x - cal->bias[0]) / cal->scale[0];
+    out->y = ((float)raw->accel_y - cal->bias[1]) / cal->scale[1];
+    out->z = ((float)raw->accel_z - cal->bias[2]) / cal->scale[2];
+}
+
+/**
+ * @brief  Vector magnitude of a calibrated sample, in g.
+ *
+ * For a stationary sensor this is 1 g whichever way the board is turned, which
+ * is what makes it a validation criterion that needs no reference hardware:
+ * the true orientation never has to be known. Only valid at rest — any real
+ * acceleration adds to gravity.
+ */
+float MPU6050_Gravity_Magnitude(const MPU6050_Accel_g_t *accel_g)
+{
+    return sqrtf(accel_g->x * accel_g->x +
+                 accel_g->y * accel_g->y +
+                 accel_g->z * accel_g->z);
 }
 
 /**

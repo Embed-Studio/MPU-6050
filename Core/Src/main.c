@@ -50,6 +50,9 @@
    live over SWD as capture probes. They look unused to a compiler and to a
    reader — leave them alone. */
 MPU6050_t mpu_data;
+MPU6050_Calibration_t mpu_cal;
+MPU6050_Accel_g_t accel_g;
+float accel_magnitude_g = 0.0f;
 volatile uint8_t mpu_data_ready = 0;
 volatile uint32_t sample_time_ticks = 0;
 volatile uint32_t sample_time_us = 0;
@@ -108,6 +111,7 @@ int main(void)
 	/* USER CODE BEGIN 2 */
 	timer_init();
 	timer_interval_init(&sample_timer);
+	MPU6050_Calibration_Init(&mpu_cal);
 	i2c_status = MPU6050_Init(&hi2c1);
 	if (i2c_status != HAL_OK) {
 		// Toggle an onboard LED or enter error loop if sensor is missing
@@ -133,6 +137,14 @@ int main(void)
 			if (i2c_status == HAL_OK) {
 				++cnt_samples;
 				mpu_data.sample_time_us = sample_time_us;
+
+				// Raw counts stay untouched in mpu_data; the model runs alongside
+				// them so raw and calibrated can be compared on the same capture.
+				MPU6050_Apply_Calibration(&mpu_cal, &mpu_data, &accel_g);
+
+				// At rest this holds at 1 g whichever way the board is turned —
+				// a wrong constant shows up here while the board is still in hand.
+				accel_magnitude_g = MPU6050_Gravity_Magnitude(&accel_g);
 			} else {
 				++cnt_read_failure;
 				// Bus is locked up! (HAL_BUSY or HAL_ERROR)
