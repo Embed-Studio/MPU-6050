@@ -1,0 +1,48 @@
+# STM32CubeIDE build outputs
+Debug/
+Release/
+build/
+
+# CubeMX generated (keep sources, ignore generator metadata)
+*.ioc.bak
+.mxproject
+
+# Object files
+*.o
+*.d
+*.su
+
+# Compiled outputs
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+
+# STM32CubeIDE workspace metadata
+.metadata/
+RemoteSystemsTempFiles/
+
+# Compiler
+*.a
+*.lib
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.orig
+*~
+
+# EmbedStudio workspaces and captures.
+# The .swdws files pin absolute ELF paths and symbol addresses from one machine,
+# so they are not portable; captures are large binary HDF5.
+es/
+
+# Reference papers and measurement data (third-party PDFs, not ours to publish)
+Docs/
+
+# Local agent guidance
+CLAUDE.md
