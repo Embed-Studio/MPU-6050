@@ -46,20 +46,20 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-/* These globals are deliberately file-scope and non-static: they are sampled
-   live over SWD as capture probes. They look unused to a compiler and to a
-   reader — leave them alone. */
 MPU6050_t mpu_data;
 MPU6050_Calibration_t mpu_cal;
 MPU6050_Accel_g_t accel_g;
 float accel_magnitude_g = 0.0f;
+MPU6050_Gyro_dps_t gyro_dps;
+MPU6050_GyroZero_t gyro_zero;
 volatile uint8_t mpu_data_ready = 0;
 volatile uint32_t sample_time_ticks = 0;
 volatile uint32_t sample_time_us = 0;
 volatile uint32_t data_exchange_time_us = 0;
 uint8_t cnt_main_cycles = 0;
 uint8_t cnt_read_failure = 0;
-uint8_t cnt_samples = 0;
+uint8_t mpu_int_status = 0;
+uint8_t cnt_stale_reads = 0;
 uint8_t error_trap = 0;
 HAL_StatusTypeDef i2c_status = HAL_OK;
 timer_interval_t sample_timer;
@@ -112,6 +112,7 @@ int main(void)
 	timer_init();
 	timer_interval_init(&sample_timer);
 	MPU6050_Calibration_Init(&mpu_cal);
+	MPU6050_Gyro_Zero_Init(&gyro_zero);
 	i2c_status = MPU6050_Init(&hi2c1);
 	if (i2c_status != HAL_OK) {
 		// Toggle an onboard LED or enter error loop if sensor is missing
@@ -130,21 +131,26 @@ int main(void)
 
 		if (mpu_data_ready) {
 			mpu_data_ready = 0; // Clear software flag
-			// Fetch values via I2C. This automatically clears the MPU-6050 hardware INT line.
 			TIMER_START(i2c_exchange);
-			i2c_status = MPU6050_Read_All(&hi2c1, &mpu_data);
+			i2c_status = MPU6050_Read_All(&hi2c1, &mpu_data, &mpu_int_status);
 			data_exchange_time_us = timer_us(TIMER_ELAPSED(i2c_exchange));
 			if (i2c_status == HAL_OK) {
-				++cnt_samples;
-				mpu_data.sample_time_us = sample_time_us;
+				if (mpu_int_status & MPU6050_INT_DATA_RDY) {
+					mpu_data.sample_time_us = sample_time_us;
 
-				// Raw counts stay untouched in mpu_data; the model runs alongside
-				// them so raw and calibrated can be compared on the same capture.
-				MPU6050_Apply_Calibration(&mpu_cal, &mpu_data, &accel_g);
+					MPU6050_Apply_Calibration(&mpu_cal, &mpu_data, &accel_g);
 
-				// At rest this holds at 1 g whichever way the board is turned —
-				// a wrong constant shows up here while the board is still in hand.
-				accel_magnitude_g = MPU6050_Gravity_Magnitude(&accel_g);
+					accel_magnitude_g = MPU6050_Gravity_Magnitude(&accel_g);
+
+					MPU6050_Gyro_Zero_Update(&gyro_zero, &mpu_data,
+					                         accel_magnitude_g, &mpu_cal);
+
+					MPU6050_Apply_Gyro_Calibration(&mpu_cal, &mpu_data, &gyro_dps);
+
+					++mpu_data.sample_count;
+				} else {
+					++cnt_stale_reads;
+				}
 			} else {
 				++cnt_read_failure;
 				// Bus is locked up! (HAL_BUSY or HAL_ERROR)
