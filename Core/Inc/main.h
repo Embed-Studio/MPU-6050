@@ -77,6 +77,20 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 
+/* --- Experiment #004: which interrupt may pre-empt the other --------------
+ * The DATA_RDY interval is timestamped inside the EXTI handler, so anything
+ * delaying handler entry lands in the measurement.
+ *
+ * NOTE: the generated HAL_MspInit() selects NVIC_PRIORITYGROUP_0, which has no
+ * pre-emption bits, so priority numbers alone do nothing under it. See
+ * Timing_ConfigureInterruptPriorities(). */
+#define TIMING_DATARDY_WINS       0
+#define TIMING_SYSTICK_WINS       1
+
+#ifndef TIMING_PRIORITY_MODE
+#define TIMING_PRIORITY_MODE      TIMING_DATARDY_WINS
+#endif
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

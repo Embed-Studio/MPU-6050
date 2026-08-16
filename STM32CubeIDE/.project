@@ -32,6 +32,11 @@
 	</natures>
 	<linkedResources>
 		<link>
+			<name>Inc</name>
+			<type>2</type>
+			<locationURI>WORKING_FOLDER/Core/Inc</locationURI>
+		</link>
+		<link>
 			<name>MPU-6050.ioc</name>
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/MPU-6050.ioc</locationURI>
@@ -163,6 +168,10 @@
 		</link>
 	</linkedResources>
 	<variableList>
+		<variable>
+			<name>WORKING_FOLDER</name>
+			<value>$%7BPARENT-1-PROJECT_LOC%7D</value>
+		</variable>
 		<variable>
 			<name>copy_PARENT</name>
 			<value>$%7BPARENT-2-PROJECT_LOC%7D/03_IMU</value>

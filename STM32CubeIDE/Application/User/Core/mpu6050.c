@@ -34,6 +34,11 @@ HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *hi2c)
 	uint8_t data;
     HAL_StatusTypeDef status;
 
+    // 0. Free the bus. A debugger-forced reset (i.e. every flash) can stop the
+    // MCU mid-transaction with the sensor still holding SDA low, which makes
+    // every transaction below fail and traps main() in Error_Handler().
+    MPU6050_Reset_I2C_Bus(hi2c);
+
     // 1. Wait for the device to answer, then verify Device ID.
     // On a cold power-up the STM32 is ready long before the MPU-6050 is, so the
     // first transaction would fail. An MCU reset alone does not power-cycle the
@@ -60,6 +65,7 @@ HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *hi2c)
 
     // 3. Wake up sensor (Clear sleep bit in PWR_MGMT_1, clock source - gyro z for improved stability of sampling time)
 	data = 0x03;
+//	data = 0x00;
 	status = HAL_I2C_Mem_Write(hi2c, MPU6050_I2C_ADDR, MPU6050_REG_PWR_MGMT_1, 1, &data, 1, 100);
 	if (status != HAL_OK) return status;
 

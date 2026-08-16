@@ -30,7 +30,13 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct {
+	timer_interval_t sample_timer;
+	uint32_t 	sample_time_ticks;
+	float		sample_time_fl_us;
+	uint16_t 	sample_time_us;
+	uint16_t 	data_exchange_time_us;
+} time_profiling_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -53,22 +59,20 @@ float accel_magnitude_g = 0.0f;
 MPU6050_Gyro_dps_t gyro_dps;
 MPU6050_GyroZero_t gyro_zero;
 volatile uint8_t mpu_data_ready = 0;
-volatile uint32_t sample_time_ticks = 0;
-volatile uint32_t sample_time_us = 0;
-volatile uint32_t data_exchange_time_us = 0;
+volatile time_profiling_t timings = {0};
 uint8_t cnt_main_cycles = 0;
 uint8_t cnt_read_failure = 0;
 uint8_t mpu_int_status = 0;
 uint8_t cnt_stale_reads = 0;
 uint8_t error_trap = 0;
 HAL_StatusTypeDef i2c_status = HAL_OK;
-timer_interval_t sample_timer;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+static void Timing_ConfigureInterruptPriorities(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -109,8 +113,11 @@ int main(void)
 	MX_I2C1_Init();
 	MX_TIM3_Init();
 	/* USER CODE BEGIN 2 */
+	/* After the MX_*_Init() calls, which set the EXTI priority and grouping. */
+	Timing_ConfigureInterruptPriorities();
+
 	timer_init();
-	timer_interval_init(&sample_timer);
+	timer_interval_init(&timings.sample_timer);
 	MPU6050_Calibration_Init(&mpu_cal);
 	MPU6050_Gyro_Zero_Init(&gyro_zero);
 	i2c_status = MPU6050_Init(&hi2c1);
@@ -133,10 +140,10 @@ int main(void)
 			mpu_data_ready = 0; // Clear software flag
 			TIMER_START(i2c_exchange);
 			i2c_status = MPU6050_Read_All(&hi2c1, &mpu_data, &mpu_int_status);
-			data_exchange_time_us = timer_us(TIMER_ELAPSED(i2c_exchange));
+			timings.data_exchange_time_us = timer_us(TIMER_ELAPSED(i2c_exchange));
 			if (i2c_status == HAL_OK) {
 				if (mpu_int_status & MPU6050_INT_DATA_RDY) {
-					mpu_data.sample_time_us = sample_time_us;
+					mpu_data.sample_time_us = timings.sample_time_us;
 
 					MPU6050_Apply_Calibration(&mpu_cal, &mpu_data, &accel_g);
 
@@ -215,12 +222,41 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+  * @brief  Apply the interrupt priorities the timing experiment depends on.
+  *
+  * Grouping first: HAL_NVIC_SetPriority() encodes against whatever grouping is
+  * current, and the generated HAL_MspInit() leaves it at NVIC_PRIORITYGROUP_0,
+  * which has no pre-emption bits. Lower number wins. TIM6 is pinned weak in
+  * both modes so it cannot become a second source of delay.
+  */
+static void Timing_ConfigureInterruptPriorities(void)
+{
+    HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+
+#if TIMING_PRIORITY_MODE == TIMING_SYSTICK_WINS
+    /* A tick landing just before a DATA_RDY edge delays the timestamp, and the
+       interval that follows is short by the same amount. */
+    HAL_NVIC_SetPriority(SysTick_IRQn,  0U, 0U);
+    HAL_NVIC_SetPriority(EXTI9_5_IRQn, 15U, 0U);
+    HAL_NVIC_SetPriority(TIM6_DAC_IRQn, 15U, 0U);
+#else
+    /* Shipped: nothing outranks the measurement. */
+    HAL_NVIC_SetPriority(EXTI9_5_IRQn,  0U, 0U);
+    HAL_NVIC_SetPriority(SysTick_IRQn, 15U, 0U);
+    HAL_NVIC_SetPriority(TIM6_DAC_IRQn, 15U, 0U);
+#endif
+
+}
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == MPU6050_INT_Pin) { // Ensure this matches your CubeMX user label for PB8
         mpu_data_ready = 1;
-        sample_time_ticks = timer_interval_update(&sample_timer);
-        sample_time_us = timer_us(sample_time_ticks);
+        timings.sample_time_ticks = timer_interval_update(&timings.sample_timer);
+        timings.sample_time_us = timer_us(timings.sample_time_ticks);
+        timings.sample_time_fl_us = timer_us_f(timings.sample_time_ticks);
     }
 }
 /* USER CODE END 4 */

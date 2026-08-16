@@ -408,7 +408,7 @@ __STATIC_INLINE void timer_interval_init(timer_interval_t *timer)
   * sample.dt     = timer_s_f(sample.cycles);
   * @endcode
   */
-__STATIC_INLINE timer_ticks_t timer_interval_update(timer_interval_t *timer)
+__STATIC_INLINE timer_ticks_t timer_interval_update(volatile timer_interval_t *timer)
 {
     const timer_ticks_t now     = timer_now();
     const timer_ticks_t elapsed = (timer_ticks_t)(now - timer->last);
