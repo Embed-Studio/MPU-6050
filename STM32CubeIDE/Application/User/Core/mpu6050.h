@@ -37,6 +37,64 @@
 /* Expected Identity Value */
 #define MPU6050_WHO_AM_I_VAL     0x68
 
+/* ---------------------------------------------------------------------------
+   Bandwidth and output rate — set MPU6050_DLPF_BANDWIDTH; CONFIG and SMPLRT_DIV
+   are derived from it, so they cannot disagree.
+
+   One filter serves both sensors, and it also sets the rate SMPLRT_DIV divides.
+   Register map Rev. 4.2, table 1:
+
+       DLPF_CFG   accel BW / delay     gyro BW / delay      divided rate
+       0          260 Hz /  0.0 ms     256 Hz /  0.98 ms    8 kHz
+       1          184 Hz /  2.0 ms     188 Hz /  1.9  ms    1 kHz
+       2           94 Hz /  3.0 ms      98 Hz /  2.8  ms    1 kHz
+       3           44 Hz /  4.9 ms      42 Hz /  4.8  ms    1 kHz
+       4           21 Hz /  8.5 ms      20 Hz /  8.3  ms    1 kHz
+       5           10 Hz / 13.8 ms      10 Hz / 13.4  ms    1 kHz
+       6            5 Hz / 19.0 ms       5 Hz / 18.6  ms    1 kHz
+
+   Note the divided rate: 8 kHz at setting 0, 1 kHz elsewhere. Changing the
+   bandwidth with a hand-written divider therefore changes the output rate by 8x
+   without any other symptom.
+   --------------------------------------------------------------------------- */
+
+/* Named for the accelerometer bandwidth, as the table is. */
+#define MPU6050_DLPF_260HZ       0u
+#define MPU6050_DLPF_184HZ       1u
+#define MPU6050_DLPF_94HZ        2u
+#define MPU6050_DLPF_44HZ        3u
+#define MPU6050_DLPF_21HZ        4u
+#define MPU6050_DLPF_10HZ        5u
+#define MPU6050_DLPF_5HZ         6u
+
+#ifndef MPU6050_DLPF_BANDWIDTH   /* #001-#004 ran at MPU6050_DLPF_44HZ */
+#define MPU6050_DLPF_BANDWIDTH   MPU6050_DLPF_44HZ
+#endif
+
+#ifndef MPU6050_SAMPLE_RATE_HZ
+#define MPU6050_SAMPLE_RATE_HZ   1000u
+#endif
+
+#define MPU6050_GYRO_OUTPUT_RATE_HZ \
+    (((MPU6050_DLPF_BANDWIDTH) == MPU6050_DLPF_260HZ) ? 8000u : 1000u)
+
+/* CONFIG (0x1A): DLPF_CFG in bits [2:0], EXT_SYNC_SET 0 (FSYNC unused). */
+#define MPU6050_CONFIG_VALUE     ((uint8_t)((MPU6050_DLPF_BANDWIDTH) & 0x07u))
+
+/* SMPLRT_DIV (0x19): rate = divided rate / (1 + SMPLRT_DIV). */
+#define MPU6050_SMPLRT_DIV_VALUE \
+    ((uint8_t)((MPU6050_GYRO_OUTPUT_RATE_HZ / (MPU6050_SAMPLE_RATE_HZ)) - 1u))
+
+#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
+_Static_assert((MPU6050_DLPF_BANDWIDTH) <= MPU6050_DLPF_5HZ,
+               "DLPF_CFG 7 is reserved");
+_Static_assert((MPU6050_SAMPLE_RATE_HZ) > 0u &&
+               (MPU6050_GYRO_OUTPUT_RATE_HZ % (MPU6050_SAMPLE_RATE_HZ)) == 0u,
+               "MPU6050_SAMPLE_RATE_HZ must divide the divided rate exactly");
+_Static_assert((MPU6050_GYRO_OUTPUT_RATE_HZ / (MPU6050_SAMPLE_RATE_HZ)) <= 256u,
+               "MPU6050_SAMPLE_RATE_HZ too low: SMPLRT_DIV is 8 bits");
+#endif
+
 /* INT_STATUS bit: a new sample has been written to the data registers.
    Reading INT_STATUS clears every bit in it, which is the only thing that
    releases the INT pin while INT_RD_CLEAR (INT_PIN_CFG) stays at its reset 0.

@@ -70,11 +70,8 @@ HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *hi2c)
 	if (status != HAL_OK) return status;
 
 	// 4. Configure Frame Synchronization and Digital Low Pass Filter (DLPF)
-	// CONFIG (0x1A) = 0x03 -> DLPF_CFG = 3. One register sets both filters, but
-	// they are not the same filter: 44 Hz / 4.9 ms delay on the accelerometer,
-	// 42 Hz / 4.8 ms on the gyroscope. Gyro output rate becomes 1 kHz, which is
-	// what makes SMPLRT_DIV below mean 1 kHz.
-	data = 0x03;
+	// From MPU6050_DLPF_BANDWIDTH in mpu6050.h — see the table there.
+	data = MPU6050_CONFIG_VALUE;
 	status = HAL_I2C_Mem_Write(hi2c, MPU6050_I2C_ADDR, MPU6050_REG_CONFIG, 1, &data, 1, 100);
 	if (status != HAL_OK) return status;
 
@@ -99,10 +96,9 @@ HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *hi2c)
 	if (status != HAL_OK) return status;
 
 	// 7. Set Sample Rate Divider
-	// SMPLRT_DIV (0x19) = 0x00 -> Sample Rate = 1 kHz / (1 + 0) = 1 kHz.
-	// The base rate is 1 kHz only because the DLPF is enabled above; with
-	// DLPF_CFG = 0 it becomes 8 kHz and the same divider yields a different rate.
-	data = 0x0;
+	// Derived from the bandwidth in step 4, never written by hand: the rate it
+	// divides is 8 kHz at DLPF_CFG = 0 and 1 kHz otherwise.
+	data = MPU6050_SMPLRT_DIV_VALUE;
 	status = HAL_I2C_Mem_Write(hi2c, MPU6050_I2C_ADDR, MPU6050_REG_SMPLRT_DIV, 1, &data, 1, 100);
 	if (status != HAL_OK) return status;
 
