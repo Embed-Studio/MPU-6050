@@ -26,6 +26,9 @@
 /* USER CODE BEGIN Includes */
 #include "mpu6050.h"
 #include "timer.h"
+#include "ahrs.h"
+#include "es_math.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,6 +39,7 @@ typedef struct {
 	float		sample_time_fl_us;
 	uint16_t 	sample_time_us;
 	uint16_t 	data_exchange_time_us;
+	uint16_t	signal_processing_us;
 } time_profiling_t;
 /* USER CODE END PTD */
 
@@ -54,10 +58,12 @@ typedef struct {
 /* USER CODE BEGIN PV */
 MPU6050_t mpu_data;
 MPU6050_Calibration_t mpu_cal;
-MPU6050_Accel_g_t accel_g;
+vector_3f_t accel_g;
 float accel_magnitude_g = 0.0f;
-MPU6050_Gyro_dps_t gyro_dps;
+vector_3f_t gyro_dps;
 MPU6050_GyroZero_t gyro_zero;
+ahrs_attitude_t attitude;
+ahrs_attitude_t attitude_deg;
 volatile uint8_t mpu_data_ready = 0;
 volatile time_profiling_t timings = {0};
 uint8_t cnt_main_cycles = 0;
@@ -143,6 +149,7 @@ int main(void)
 			timings.data_exchange_time_us = timer_us(TIMER_ELAPSED(i2c_exchange));
 			if (i2c_status == HAL_OK) {
 				if (mpu_int_status & MPU6050_INT_DATA_RDY) {
+					TIMER_START(sig_processing);
 					mpu_data.sample_time_us = timings.sample_time_us;
 
 					MPU6050_Apply_Calibration(&mpu_cal, &mpu_data, &accel_g);
@@ -154,7 +161,13 @@ int main(void)
 
 					MPU6050_Apply_Gyro_Calibration(&mpu_cal, &mpu_data, &gyro_dps);
 
+					ahrs_estimate_attitude(&accel_g, &attitude);
+
+					attitude_deg.roll = rad_to_deg(attitude.roll);
+					attitude_deg.pitch = rad_to_deg(attitude.pitch);
+
 					++mpu_data.sample_count;
+					timings.signal_processing_us = timer_us(TIMER_ELAPSED(sig_processing));
 				} else {
 					++cnt_stale_reads;
 				}

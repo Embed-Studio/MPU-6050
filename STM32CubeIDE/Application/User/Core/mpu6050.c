@@ -144,44 +144,19 @@ HAL_StatusTypeDef MPU6050_Read_All(I2C_HandleTypeDef *hi2c, MPU6050_t *data,
     *int_status = buffer[0];
 
     // Combine high and low bytes
-    data->accel_x = (int16_t)((buffer[1]  << 8) | buffer[2]);
-    data->accel_y = (int16_t)((buffer[3]  << 8) | buffer[4]);
-    data->accel_z = (int16_t)((buffer[5]  << 8) | buffer[6]);
+    data->accel[0] = (int16_t)((buffer[1]  << 8) | buffer[2]);
+    data->accel[1] = (int16_t)((buffer[3]  << 8) | buffer[4]);
+    data->accel[2] = (int16_t)((buffer[5]  << 8) | buffer[6]);
 
     int16_t raw_temp = (int16_t)((buffer[7] << 8) | buffer[8]);
     // Temperature formula from MPU-6050 datasheet
     data->temperature = ((float)raw_temp / 340.0f) + 36.53f;
 
-    data->gyro_x  = (int16_t)((buffer[9]  << 8) | buffer[10]);
-    data->gyro_y  = (int16_t)((buffer[11] << 8) | buffer[12]);
-    data->gyro_z  = (int16_t)((buffer[13] << 8) | buffer[14]);
+    data->gyro[0]  = (int16_t)((buffer[9]  << 8) | buffer[10]);
+    data->gyro[1]  = (int16_t)((buffer[11] << 8) | buffer[12]);
+    data->gyro[2]  = (int16_t)((buffer[13] << 8) | buffer[14]);
 
     return HAL_OK;
-}
-
-/**
- * @brief  Loads the compiled-in calibration constants.
- */
-void MPU6050_Calibration_Init(MPU6050_Calibration_t *cal)
-{
-    cal->accel_scale[0] = MPU6050_ACCEL_SCALE_X_DEFAULT;
-    cal->accel_scale[1] = MPU6050_ACCEL_SCALE_Y_DEFAULT;
-    cal->accel_scale[2] = MPU6050_ACCEL_SCALE_Z_DEFAULT;
-
-    cal->accel_bias[0] = MPU6050_ACCEL_BIAS_X_DEFAULT;
-    cal->accel_bias[1] = MPU6050_ACCEL_BIAS_Y_DEFAULT;
-    cal->accel_bias[2] = MPU6050_ACCEL_BIAS_Z_DEFAULT;
-
-    cal->gyro_scale[0] = MPU6050_GYRO_SCALE_X_DEFAULT;
-    cal->gyro_scale[1] = MPU6050_GYRO_SCALE_Y_DEFAULT;
-    cal->gyro_scale[2] = MPU6050_GYRO_SCALE_Z_DEFAULT;
-
-    /* Left at zero on purpose: the gyroscope bias is measured at every startup
-       by MPU6050_Gyro_Zero_Update(), never stored. Until it lands, the rate
-       output carries the raw offset rather than hiding it behind a stale one. */
-    cal->gyro_bias[0] = 0.0f;
-    cal->gyro_bias[1] = 0.0f;
-    cal->gyro_bias[2] = 0.0f;
 }
 
 /**
@@ -189,11 +164,11 @@ void MPU6050_Calibration_Init(MPU6050_Calibration_t *cal)
  */
 void MPU6050_Apply_Calibration(const MPU6050_Calibration_t *cal,
                                const MPU6050_t *raw,
-                               MPU6050_Accel_g_t *out)
+							   vector_3f_t *out)
 {
-    out->x = ((float)raw->accel_x - cal->accel_bias[0]) / cal->accel_scale[0];
-    out->y = ((float)raw->accel_y - cal->accel_bias[1]) / cal->accel_scale[1];
-    out->z = ((float)raw->accel_z - cal->accel_bias[2]) / cal->accel_scale[2];
+	for (uint_fast8_t i = 0; i < MPU6050_N_AXIS; ++i) {
+		out->v[i] = ((float)raw->accel[i] - cal->accel_bias.v[i]) / cal->accel_scale.v[i];
+	}
 }
 
 /**
@@ -204,11 +179,11 @@ void MPU6050_Apply_Calibration(const MPU6050_Calibration_t *cal,
  */
 void MPU6050_Apply_Gyro_Calibration(const MPU6050_Calibration_t *cal,
                                     const MPU6050_t *raw,
-                                    MPU6050_Gyro_dps_t *out)
+									vector_3f_t *out)
 {
-    out->x = ((float)raw->gyro_x - cal->gyro_bias[0]) / cal->gyro_scale[0];
-    out->y = ((float)raw->gyro_y - cal->gyro_bias[1]) / cal->gyro_scale[1];
-    out->z = ((float)raw->gyro_z - cal->gyro_bias[2]) / cal->gyro_scale[2];
+	for (uint_fast8_t i = 0; i < MPU6050_N_AXIS; ++i) {
+		out->v[i] = ((float)raw->gyro[i] - cal->gyro_bias.v[i]) / cal->gyro_scale.v[i];
+	}
 }
 
 /**
@@ -223,7 +198,7 @@ void MPU6050_Gyro_Zero_Init(MPU6050_GyroZero_t *z)
 static void gyro_zero_block_reset(MPU6050_GyroZero_t *z)
 {
     z->blk_n = 0;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < MPU6050_N_AXIS; ++i) {
         z->blk_sum[i] = 0;
         z->blk_sum_sq[i] = 0;
     }
@@ -259,8 +234,8 @@ uint8_t MPU6050_Gyro_Zero_Update(MPU6050_GyroZero_t *z,
         return 1;
     }
 
-    const int32_t g[3] = { raw->gyro_x, raw->gyro_y, raw->gyro_z };
-    for (int i = 0; i < 3; ++i) {
+    const int32_t g[MPU6050_N_AXIS] = { raw->gyro[0], raw->gyro[1], raw->gyro[3] };
+    for (int i = 0; i < MPU6050_N_AXIS; ++i) {
         z->blk_sum[i]    += g[i];
         z->blk_sum_sq[i] += (int64_t)g[i] * g[i];
     }
@@ -275,7 +250,7 @@ uint8_t MPU6050_Gyro_Zero_Update(MPU6050_GyroZero_t *z,
     /* Check block complete: measure how still the board was over it. */
     const uint32_t n = z->blk_n;
     float var_sum = 0.0f;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < MPU6050_N_AXIS; ++i) {
         /* Exact, rather than the naive float form which subtracts two nearly
            equal large numbers and loses the digits the variance lives in. The
            (int64_t) matters: blk_sum reaches 6.5e6, so squaring it in 32 bits
@@ -304,7 +279,7 @@ uint8_t MPU6050_Gyro_Zero_Update(MPU6050_GyroZero_t *z,
         if (z->n != 0) {
             ++z->restarts;
             z->n = 0;
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < MPU6050_N_AXIS; ++i) {
                 z->sum[i] = 0;
             }
         }
@@ -313,7 +288,7 @@ uint8_t MPU6050_Gyro_Zero_Update(MPU6050_GyroZero_t *z,
     }
 
     /* Still: bank the block. */
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < MPU6050_N_AXIS; ++i) {
         z->sum[i] += z->blk_sum[i];
     }
     z->n = (uint16_t)(z->n + z->blk_n);
@@ -323,8 +298,8 @@ uint8_t MPU6050_Gyro_Zero_Update(MPU6050_GyroZero_t *z,
         return 0;
     }
 
-    for (int i = 0; i < 3; ++i) {
-        cal->gyro_bias[i] = (float)z->sum[i] / (float)z->n;
+    for (int i = 0; i < MPU6050_N_AXIS; ++i) {
+        cal->gyro_bias.v[i] = (float)z->sum[i] / (float)z->n;
     }
     z->ready = 1;
     return 1;
@@ -338,7 +313,7 @@ uint8_t MPU6050_Gyro_Zero_Update(MPU6050_GyroZero_t *z,
  * the true orientation never has to be known. Only valid at rest — any real
  * acceleration adds to gravity.
  */
-float MPU6050_Gravity_Magnitude(const MPU6050_Accel_g_t *accel_g)
+float MPU6050_Gravity_Magnitude(const vector_3f_t *accel_g)
 {
     return sqrtf(accel_g->x * accel_g->x +
                  accel_g->y * accel_g->y +

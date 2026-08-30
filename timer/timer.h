@@ -389,7 +389,7 @@ __STATIC_INLINE float timer_s_f(timer_ticks_t ticks)
   * The first @ref timer_interval_update() then returns the time elapsed since
   * this call.
   */
-__STATIC_INLINE void timer_interval_init(timer_interval_t *timer)
+__STATIC_INLINE void timer_interval_init(volatile timer_interval_t* timer)
 {
     timer->last = timer_now();
 }

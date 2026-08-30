@@ -20,6 +20,7 @@
 /* Exported functions --------------------------------------------------------*/
 
 #include "stm32f4xx_hal.h"
+#include "vector_3f.h"
 
 /* MPU-6050 Device Address */
 #define MPU6050_I2C_ADDR         (0x68 << 1)
@@ -36,6 +37,10 @@
 
 /* Expected Identity Value */
 #define MPU6050_WHO_AM_I_VAL     0x68
+
+enum {
+	MPU6050_N_AXIS = 3,
+};
 
 /* ---------------------------------------------------------------------------
    Bandwidth and output rate — set MPU6050_DLPF_BANDWIDTH; CONFIG and SMPLRT_DIV
@@ -68,7 +73,7 @@
 #define MPU6050_DLPF_5HZ         6u
 
 #ifndef MPU6050_DLPF_BANDWIDTH   /* #001-#004 ran at MPU6050_DLPF_44HZ */
-#define MPU6050_DLPF_BANDWIDTH   MPU6050_DLPF_44HZ
+#define MPU6050_DLPF_BANDWIDTH   MPU6050_DLPF_21HZ
 #endif
 
 #ifndef MPU6050_SAMPLE_RATE_HZ
@@ -270,12 +275,8 @@ _Static_assert(MPU6050_GYRO_ZERO_SAMPLES + MPU6050_GYRO_ZERO_CHECK - 1u <= 65535
 
 /* Data Structures */
 typedef struct {
-    int16_t 	accel_x;
-    int16_t 	accel_y;
-    int16_t 	accel_z;
-    int16_t 	gyro_x;
-    int16_t 	gyro_y;
-    int16_t 	gyro_z;
+    int16_t 	accel[MPU6050_N_AXIS];
+    int16_t 	gyro[MPU6050_N_AXIS];
     float 		temperature;
     uint16_t	sample_time_us;
     /* Counts *sensor updates*: incremented only when the burst read came back
@@ -304,25 +305,13 @@ typedef struct {
    The accel_ fields were called scale/bias before the gyroscope joined them; the
    prefix is what stops the two models being confused at a call site. */
 typedef struct {
-    float accel_scale[3];  /* LSB/g,       X Y Z — compiled in */
-    float accel_bias[3];   /* LSB,         X Y Z — compiled in */
-    float gyro_scale[3];   /* LSB/(deg/s), X Y Z — compiled in */
-    float gyro_bias[3];    /* LSB,         X Y Z — MEASURED AT STARTUP, not
+	vector_3f_t accel_scale;  /* LSB/g,       X Y Z — compiled in */
+	vector_3f_t accel_bias;   /* LSB,         X Y Z — compiled in */
+	vector_3f_t gyro_scale;   /* LSB/(deg/s), X Y Z — compiled in */
+	vector_3f_t gyro_bias;    /* LSB,         X Y Z — MEASURED AT STARTUP, not
                               compiled in. Zero until the stillness gate has
                               accepted a window; see MPU6050_GyroZero_t. */
 } MPU6050_Calibration_t;
-
-typedef struct {
-    float x;          /* g */
-    float y;          /* g */
-    float z;          /* g */
-} MPU6050_Accel_g_t;
-
-typedef struct {
-    float x;          /* deg/s */
-    float y;          /* deg/s */
-    float z;          /* deg/s */
-} MPU6050_Gyro_dps_t;
 
 /* Startup-zeroing state machine. Every field after `ready` is there to be
    watched live over SWD — the point of a gate is that you can see it rejecting
@@ -338,7 +327,7 @@ typedef struct {
                                never still at all. Fits the padding hole the
                                struct already had, so it moved no other field. */
 
-    int32_t  sum[3];        /* banked window; only the sum is needed, since
+    int32_t  sum[MPU6050_N_AXIS];        /* banked window; only the sum is needed, since
                                stillness is judged per check block */
 
     /* Current check block. Integer accumulators, so the variance comes out
@@ -346,15 +335,15 @@ typedef struct {
        counts would lose the digits the variance lives in. The magnitude
        accumulators track |a| - 1 g for the same reason. */
     uint16_t blk_n;
-    int32_t  blk_sum[3];
-    int64_t  blk_sum_sq[3];
+    int32_t  blk_sum[MPU6050_N_AXIS];
+    int64_t  blk_sum_sq[MPU6050_N_AXIS];
     float    blk_acc_sum;
     float    blk_acc_sum_sq;
 
     /* The most recently completed check block — how still the board is right
        now. Updated every MPU6050_GYRO_ZERO_CHECK samples, pass or fail, and
        frozen once ready, because Update() then returns immediately. */
-    float    sd[3];         /* per-axis rate sd, LSB */
+    float    sd[MPU6050_N_AXIS];         /* per-axis rate sd, LSB */
     float    sd_norm;       /* vector norm of sd[], the gated quantity */
     float    acc_sd;        /* sd of |a|, g */
     float    acc_err;       /* mean |a| - 1, g */
@@ -368,11 +357,30 @@ HAL_StatusTypeDef MPU6050_Clear_Interrupt(I2C_HandleTypeDef *hi2c);
 void MPU6050_Reset_I2C_Bus(I2C_HandleTypeDef *hi2c);
 
 /* Calibration */
-void  MPU6050_Calibration_Init(MPU6050_Calibration_t *cal);
+/**
+ * @brief  Loads the compiled-in calibration constants.
+ */
+__STATIC_INLINE void MPU6050_Calibration_Init(MPU6050_Calibration_t *cal) {
+	cal->accel_scale.x = MPU6050_ACCEL_SCALE_X_DEFAULT;
+	cal->accel_scale.y = MPU6050_ACCEL_SCALE_Y_DEFAULT;
+	cal->accel_scale.z = MPU6050_ACCEL_SCALE_Z_DEFAULT;
+	cal->accel_bias.x = MPU6050_ACCEL_BIAS_X_DEFAULT;
+	cal->accel_bias.y = MPU6050_ACCEL_BIAS_Y_DEFAULT;
+	cal->accel_bias.z = MPU6050_ACCEL_BIAS_Z_DEFAULT;
+	cal->gyro_scale.x = MPU6050_GYRO_SCALE_X_DEFAULT;
+	cal->gyro_scale.y = MPU6050_GYRO_SCALE_Y_DEFAULT;
+	cal->gyro_scale.z = MPU6050_GYRO_SCALE_Z_DEFAULT;
+	/* Left at zero on purpose: the gyroscope bias is measured at every startup
+	 by MPU6050_Gyro_Zero_Update(), never stored. Until it lands, the rate
+	 output carries the raw offset rather than hiding it behind a stale one. */
+	for (uint_fast8_t i = 0; i < MPU6050_N_AXIS; ++i) {
+		cal->gyro_bias.v[i] = 0.0f;
+	}
+}
 void  MPU6050_Apply_Calibration(const MPU6050_Calibration_t *cal,
                                 const MPU6050_t *raw,
-                                MPU6050_Accel_g_t *out);
-float MPU6050_Gravity_Magnitude(const MPU6050_Accel_g_t *accel_g);
+								vector_3f_t *out);
+float MPU6050_Gravity_Magnitude(const vector_3f_t *accel_g);
 
 /* Gyroscope: startup zeroing behind a stillness gate, then the rate model */
 void    MPU6050_Gyro_Zero_Init(MPU6050_GyroZero_t *z);
@@ -382,7 +390,7 @@ uint8_t MPU6050_Gyro_Zero_Update(MPU6050_GyroZero_t *z,
                                  MPU6050_Calibration_t *cal);
 void    MPU6050_Apply_Gyro_Calibration(const MPU6050_Calibration_t *cal,
                                        const MPU6050_t *raw,
-                                       MPU6050_Gyro_dps_t *out);
+									   vector_3f_t *out);
 
 #ifdef __cplusplus
 }
