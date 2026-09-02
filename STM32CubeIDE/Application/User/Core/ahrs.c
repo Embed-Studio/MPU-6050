@@ -26,5 +26,14 @@ void ahrs_estimate_attitude(const vector_3f_t* const acceleration,
 	attitude->roll = atan2(acceleration->y, acceleration->z);
 	attitude->pitch = atan2(-acceleration->x,
 			sqrtf(acceleration->y * acceleration->y + acceleration->z * acceleration->z));
+}
 
+void ahrs_estimate_regularized_attitude(const vector_3f_t* const acceleration,
+		ahrs_attitude_t* const attitude, const float mu)
+{
+	attitude->roll = atan2(acceleration->y,
+			copysignf(1.0f, acceleration->z) *
+			sqrtf(mu * acceleration->x * acceleration->x + acceleration->z * acceleration->z));
+	attitude->pitch = atan2(-acceleration->x,
+			sqrtf(acceleration->y * acceleration->y + acceleration->z * acceleration->z));
 }

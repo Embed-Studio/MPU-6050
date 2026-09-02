@@ -27,6 +27,8 @@ typedef struct {
 /* Exported functions --------------------------------------------------------*/
 void ahrs_estimate_attitude(const vector_3f_t* const acceleration,
 		ahrs_attitude_t* const attitude);
+void ahrs_estimate_regularized_attitude(const vector_3f_t* const acceleration,
+		ahrs_attitude_t* const attitude, const float mu);
 
 #ifdef __cplusplus
 }

@@ -73,6 +73,21 @@ uint8_t cnt_stale_reads = 0;
 uint8_t error_trap = 0;
 HAL_StatusTypeDef i2c_status = HAL_OK;
 
+// Regularization of attitude
+enum {
+	N_REG_VALS = 5,
+};
+float mu[N_REG_VALS] = {
+	0.0f,
+	0.1f,
+	0.01f,
+	0.001f,
+	0.0001f,
+};
+ahrs_attitude_t attitude_reg[N_REG_VALS];
+ahrs_attitude_t attitude_reg_deg[N_REG_VALS];
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -168,6 +183,15 @@ int main(void)
 
 					++mpu_data.sample_count;
 					timings.signal_processing_us = timer_us(TIMER_ELAPSED(sig_processing));
+
+					// Computing regularized roll
+					for (uint8_t i = 0; i < N_REG_VALS; ++i) {
+						ahrs_estimate_regularized_attitude(&accel_g, &attitude_reg[i], mu[i]);
+
+						attitude_reg_deg[i].roll = rad_to_deg(attitude_reg[i].roll);
+						attitude_reg_deg[i].pitch = rad_to_deg(attitude_reg[i].pitch);
+					}
+
 				} else {
 					++cnt_stale_reads;
 				}
