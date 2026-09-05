@@ -234,7 +234,7 @@ uint8_t MPU6050_Gyro_Zero_Update(MPU6050_GyroZero_t *z,
         return 1;
     }
 
-    const int32_t g[MPU6050_N_AXIS] = { raw->gyro[0], raw->gyro[1], raw->gyro[3] };
+    const int32_t g[MPU6050_N_AXIS] = { raw->gyro[0], raw->gyro[1], raw->gyro[2] };
     for (int i = 0; i < MPU6050_N_AXIS; ++i) {
         z->blk_sum[i]    += g[i];
         z->blk_sum_sq[i] += (int64_t)g[i] * g[i];

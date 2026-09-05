@@ -45,7 +45,10 @@ typedef struct {
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+enum {
+	US_IN_S = 1000000,
+	N_SAMPLES_BEFORE_GYRO_INIT = 10,
+};
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -64,6 +67,7 @@ vector_3f_t gyro_dps;
 MPU6050_GyroZero_t gyro_zero;
 ahrs_attitude_t attitude;
 ahrs_attitude_t attitude_deg;
+vector_3f_t gyro_angles_deg;
 volatile uint8_t mpu_data_ready = 0;
 volatile time_profiling_t timings = {0};
 uint8_t cnt_main_cycles = 0;
@@ -71,22 +75,9 @@ uint8_t cnt_read_failure = 0;
 uint8_t mpu_int_status = 0;
 uint8_t cnt_stale_reads = 0;
 uint8_t error_trap = 0;
+uint8_t gyro_inited = 0;
+uint8_t gyro_init_request = 0;
 HAL_StatusTypeDef i2c_status = HAL_OK;
-
-// Regularization of attitude
-enum {
-	N_REG_VALS = 5,
-};
-float mu[N_REG_VALS] = {
-	0.0f,
-	0.1f,
-	0.01f,
-	0.001f,
-	0.0001f,
-};
-ahrs_attitude_t attitude_reg[N_REG_VALS];
-ahrs_attitude_t attitude_reg_deg[N_REG_VALS];
-
 
 /* USER CODE END PV */
 
@@ -165,7 +156,7 @@ int main(void)
 			if (i2c_status == HAL_OK) {
 				if (mpu_int_status & MPU6050_INT_DATA_RDY) {
 					TIMER_START(sig_processing);
-					mpu_data.sample_time_us = timings.sample_time_us;
+					mpu_data.sample_time_us = timings.sample_time_fl_us;
 
 					MPU6050_Apply_Calibration(&mpu_cal, &mpu_data, &accel_g);
 
@@ -181,16 +172,23 @@ int main(void)
 					attitude_deg.roll = rad_to_deg(attitude.roll);
 					attitude_deg.pitch = rad_to_deg(attitude.pitch);
 
+					if ((!gyro_inited && (mpu_data.sample_count > N_SAMPLES_BEFORE_GYRO_INIT))
+					|| !gyro_zero.ready
+					|| gyro_init_request) {
+						gyro_inited = 1;
+						gyro_init_request = 0;
+						vector_3f_t init_angle = {
+								.x = attitude_deg.roll,
+								.y = attitude_deg.pitch,
+								.z = 0,
+						};
+						ahrs_gyro_reset(&gyro_angles_deg, &init_angle);
+					}
+
+					ahrs_gyro_loop(&gyro_dps, (mpu_data.sample_time_us) / US_IN_S, &gyro_angles_deg);
+
 					++mpu_data.sample_count;
 					timings.signal_processing_us = timer_us(TIMER_ELAPSED(sig_processing));
-
-					// Computing regularized roll
-					for (uint8_t i = 0; i < N_REG_VALS; ++i) {
-						ahrs_estimate_regularized_attitude(&accel_g, &attitude_reg[i], mu[i]);
-
-						attitude_reg_deg[i].roll = rad_to_deg(attitude_reg[i].roll);
-						attitude_reg_deg[i].pitch = rad_to_deg(attitude_reg[i].pitch);
-					}
 
 				} else {
 					++cnt_stale_reads;

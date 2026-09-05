@@ -278,7 +278,7 @@ typedef struct {
     int16_t 	accel[MPU6050_N_AXIS];
     int16_t 	gyro[MPU6050_N_AXIS];
     float 		temperature;
-    uint16_t	sample_time_us;
+    float		sample_time_us;
     /* Counts *sensor updates*: incremented only when the burst read came back
        with DATA_RDY set in INT_STATUS, so a host can tell a fresh sample from
        the same reading seen twice. It is incremented LAST, after every other
