@@ -32,7 +32,9 @@ void ahrs_estimate_regularized_attitude(const vector_3f_t* const acceleration,
 void ahrs_gyro_reset(vector_3f_t* const gyro, const vector_3f_t* const gyro_init);
 void ahrs_gyro_loop(const vector_3f_t* const gyro, const float dt_s,
 		vector_3f_t* const angles);
-
+void ahrs_complementary_filter(const ahrs_attitude_t* const accel_attitude,
+		const vector_3f_t* const gyro, vector_3f_t* const attitude, const float alpha,
+		const float dt_s);
 #ifdef __cplusplus
 }
 #endif

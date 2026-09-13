@@ -48,6 +48,9 @@ typedef struct {
 enum {
 	US_IN_S = 1000000,
 	N_SAMPLES_BEFORE_GYRO_INIT = 10,
+	N_FILTER_CONSTANTS = 6,
+	LOOP_TIME_MS = 1,
+	N_ACCEL_SAMPLE_FOR_INITIAL_ESTIMATION = 100,
 };
 /* USER CODE END PD */
 
@@ -67,6 +70,7 @@ vector_3f_t gyro_dps;
 MPU6050_GyroZero_t gyro_zero;
 ahrs_attitude_t attitude;
 ahrs_attitude_t attitude_deg;
+ahrs_attitude_t accu_accel_attitude_deg = {0};
 vector_3f_t gyro_angles_deg;
 volatile uint8_t mpu_data_ready = 0;
 volatile time_profiling_t timings = {0};
@@ -78,6 +82,19 @@ uint8_t error_trap = 0;
 uint8_t gyro_inited = 0;
 uint8_t gyro_init_request = 0;
 HAL_StatusTypeDef i2c_status = HAL_OK;
+uint16_t cnt_accel_samples = 0;
+// Time constants for complementary filters
+float tau_ms [N_FILTER_CONSTANTS] = {
+	10,
+	50,
+	100,
+	500,
+	1000,
+	5000,
+};
+// Complementary filter constants
+float alpha [N_FILTER_CONSTANTS] = {0};
+vector_3f_t complementary_filer_attitude_deg[N_FILTER_CONSTANTS];
 
 /* USER CODE END PV */
 
@@ -137,6 +154,10 @@ int main(void)
 		// Toggle an onboard LED or enter error loop if sensor is missing
 		 Error_Handler();
 	}
+
+	for (uint8_t i = 0; i < N_FILTER_CONSTANTS; ++i) {
+		alpha[i] = tau_ms[i] / (tau_ms[i] + LOOP_TIME_MS);
+	}
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -172,20 +193,37 @@ int main(void)
 					attitude_deg.roll = rad_to_deg(attitude.roll);
 					attitude_deg.pitch = rad_to_deg(attitude.pitch);
 
-					if ((!gyro_inited && (mpu_data.sample_count > N_SAMPLES_BEFORE_GYRO_INIT))
-					|| !gyro_zero.ready
-					|| gyro_init_request) {
-						gyro_inited = 1;
-						gyro_init_request = 0;
-						vector_3f_t init_angle = {
-								.x = attitude_deg.roll,
-								.y = attitude_deg.pitch,
-								.z = 0,
-						};
-						ahrs_gyro_reset(&gyro_angles_deg, &init_angle);
+					if (((!gyro_inited && (mpu_data.sample_count > N_SAMPLES_BEFORE_GYRO_INIT))
+					|| gyro_init_request) && gyro_zero.ready) {
+						cnt_accel_samples += 1;
+						accu_accel_attitude_deg.roll += attitude_deg.roll;
+						accu_accel_attitude_deg.pitch += attitude_deg.pitch;
+
+						if (cnt_accel_samples > N_ACCEL_SAMPLE_FOR_INITIAL_ESTIMATION) {
+							gyro_inited = 1;
+							gyro_init_request = 0;
+							vector_3f_t init_angle = {
+									.x = accu_accel_attitude_deg.roll / cnt_accel_samples,
+									.y = accu_accel_attitude_deg.pitch / cnt_accel_samples,
+									.z = 0,
+							};
+							cnt_accel_samples = 0;
+							accu_accel_attitude_deg.roll = 0;
+							accu_accel_attitude_deg.pitch = 0;
+							ahrs_gyro_reset(&gyro_angles_deg, &init_angle);
+							for (uint8_t i = 0; i < N_FILTER_CONSTANTS; ++i) {
+								ahrs_gyro_reset(&complementary_filer_attitude_deg[i], &init_angle);
+							}
+						}
 					}
 
 					ahrs_gyro_loop(&gyro_dps, (mpu_data.sample_time_us) / US_IN_S, &gyro_angles_deg);
+
+					for (uint8_t i = 0; i < N_FILTER_CONSTANTS; ++i) {
+						ahrs_complementary_filter(&attitude_deg, &gyro_dps,
+								&complementary_filer_attitude_deg[i], alpha[i],
+								(mpu_data.sample_time_us) / US_IN_S);
+					}
 
 					++mpu_data.sample_count;
 					timings.signal_processing_us = timer_us(TIMER_ELAPSED(sig_processing));

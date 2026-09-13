@@ -58,3 +58,23 @@ void ahrs_gyro_loop(const vector_3f_t* const gyro, const float dt_s,
 		angles->v[i] += gyro->v[i] * dt_s;
 	}
 }
+
+/**
+ * @brief Update Euler-angle attitude using complementary filter.
+ *
+ * attitude.x = roll
+ * attitude.y = pitch
+ * attitude.z = yaw
+ * Note: accelerometer attitude and gyro must have consistent units (both hold
+ * values in radians or degrees)
+ */
+void ahrs_complementary_filter(const ahrs_attitude_t* const accel_attitude,
+		const vector_3f_t* const gyro, vector_3f_t* const attitude, const float alpha,
+		const float dt_s)
+{
+	attitude->x = alpha * (attitude->x + gyro->x * dt_s)
+			+ (1.0f - alpha) * accel_attitude->roll;
+	attitude->y = alpha * (attitude->y + gyro->y * dt_s)
+			+ (1.0f - alpha) * accel_attitude->pitch;
+	attitude->z += gyro->z * dt_s;
+}
