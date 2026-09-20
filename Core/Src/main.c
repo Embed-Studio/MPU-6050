@@ -51,6 +51,7 @@ enum {
 	N_FILTER_CONSTANTS = 6,
 	LOOP_TIME_MS = 1,
 	N_ACCEL_SAMPLE_FOR_INITIAL_ESTIMATION = 100,
+	N_KP_CONSTANTS = 3,
 };
 /* USER CODE END PD */
 
@@ -67,6 +68,7 @@ MPU6050_Calibration_t mpu_cal;
 vector_3f_t accel_g;
 float accel_magnitude_g = 0.0f;
 vector_3f_t gyro_dps;
+vector_3f_t gyro_radps;
 MPU6050_GyroZero_t gyro_zero;
 ahrs_attitude_t attitude;
 ahrs_attitude_t attitude_deg;
@@ -81,6 +83,7 @@ uint8_t cnt_stale_reads = 0;
 uint8_t error_trap = 0;
 uint8_t gyro_inited = 0;
 uint8_t gyro_init_request = 0;
+uint8_t reset_orientation = 0;
 HAL_StatusTypeDef i2c_status = HAL_OK;
 uint16_t cnt_accel_samples = 0;
 // Time constants for complementary filters
@@ -94,8 +97,14 @@ float tau_ms [N_FILTER_CONSTANTS] = {
 };
 // Complementary filter constants
 float alpha [N_FILTER_CONSTANTS] = {0};
-vector_3f_t complementary_filer_attitude_deg[N_FILTER_CONSTANTS];
+vector_3f_t complementary_filer_orientation_deg[N_FILTER_CONSTANTS];
 
+// Quaternion-based orientation
+float kp[N_KP_CONSTANTS] = {
+	0.1, 1, 10
+};
+ahrs_t ahrs[N_KP_CONSTANTS] = {0};
+vector_3f_t quaternion_orientation_deg[N_KP_CONSTANTS];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -106,6 +115,15 @@ static void Timing_ConfigureInterruptPriorities(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void process_orientation_reset_request(void) {
+	vector_3f_t reset_orientation = {.x = 0, .y = 1, .z = 0};
+	for (uint8_t i = 0; i < N_FILTER_CONSTANTS; ++i) {
+		ahrs_gyro_reset(&complementary_filer_orientation_deg[i], &reset_orientation);
+	}
+	for (uint8_t i = 0; i < N_KP_CONSTANTS; ++i) {
+		ahrs_init(&ahrs[i], &reset_orientation, kp[i]);
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -164,6 +182,11 @@ int main(void)
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
+		if (reset_orientation) {
+			reset_orientation = 0;
+			process_orientation_reset_request();
+		}
+
 		// Handling missed interrupt from sensor
 		if (HAL_GPIO_ReadPin(MPU6050_INT_GPIO_Port, MPU6050_INT_Pin)) {
 			mpu_data_ready = 1;
@@ -212,7 +235,10 @@ int main(void)
 							accu_accel_attitude_deg.pitch = 0;
 							ahrs_gyro_reset(&gyro_angles_deg, &init_angle);
 							for (uint8_t i = 0; i < N_FILTER_CONSTANTS; ++i) {
-								ahrs_gyro_reset(&complementary_filer_attitude_deg[i], &init_angle);
+								ahrs_gyro_reset(&complementary_filer_orientation_deg[i], &init_angle);
+							}
+							for (uint8_t i = 0; i < N_KP_CONSTANTS; ++i) {
+								ahrs_init(&ahrs[i], &accel_g, kp[i]);
 							}
 						}
 					}
@@ -221,8 +247,15 @@ int main(void)
 
 					for (uint8_t i = 0; i < N_FILTER_CONSTANTS; ++i) {
 						ahrs_complementary_filter(&attitude_deg, &gyro_dps,
-								&complementary_filer_attitude_deg[i], alpha[i],
+								&complementary_filer_orientation_deg[i], alpha[i],
 								(mpu_data.sample_time_us) / US_IN_S);
+					}
+
+					gyro_radps = vector_3f_scale(&gyro_dps, DEG2RAD_F);
+					for (uint8_t i = 0; i < N_KP_CONSTANTS; ++i) {
+						ahrs_update(&ahrs[i], &gyro_radps, &accel_g, (mpu_data.sample_time_us) / US_IN_S);
+						vector_3f_t quaternion_orientation_rad = quaternion_to_euler(&ahrs[i].orientation);
+						quaternion_orientation_deg[i] = vector_3f_scale(&quaternion_orientation_rad, RAD2DEG_F);
 					}
 
 					++mpu_data.sample_count;
