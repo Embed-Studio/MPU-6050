@@ -51,7 +51,7 @@ enum {
 	N_FILTER_CONSTANTS = 6,
 	LOOP_TIME_MS = 1,
 	N_ACCEL_SAMPLE_FOR_INITIAL_ESTIMATION = 100,
-	N_KP_CONSTANTS = 3,
+	N_KI_CONSTANTS = 4,
 };
 /* USER CODE END PD */
 
@@ -100,11 +100,12 @@ float alpha [N_FILTER_CONSTANTS] = {0};
 vector_3f_t complementary_filer_orientation_deg[N_FILTER_CONSTANTS];
 
 // Quaternion-based orientation
-float kp[N_KP_CONSTANTS] = {
-	0.1, 1, 10
+static const float AHRS_KP = 1.0f;
+float ki[N_KI_CONSTANTS] = {
+	0.1, 1, 10, 0
 };
-ahrs_t ahrs[N_KP_CONSTANTS] = {0};
-vector_3f_t quaternion_orientation_deg[N_KP_CONSTANTS];
+ahrs_t ahrs[N_KI_CONSTANTS] = {0};
+vector_3f_t quaternion_orientation_deg[N_KI_CONSTANTS];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -120,8 +121,8 @@ void process_orientation_reset_request(void) {
 	for (uint8_t i = 0; i < N_FILTER_CONSTANTS; ++i) {
 		ahrs_gyro_reset(&complementary_filer_orientation_deg[i], &reset_orientation);
 	}
-	for (uint8_t i = 0; i < N_KP_CONSTANTS; ++i) {
-		ahrs_init(&ahrs[i], &reset_orientation, kp[i]);
+	for (uint8_t i = 0; i < N_KI_CONSTANTS; ++i) {
+		ahrs_init(&ahrs[i], &reset_orientation, AHRS_KP, ki[i]);
 	}
 }
 
@@ -237,8 +238,8 @@ int main(void)
 							for (uint8_t i = 0; i < N_FILTER_CONSTANTS; ++i) {
 								ahrs_gyro_reset(&complementary_filer_orientation_deg[i], &init_angle);
 							}
-							for (uint8_t i = 0; i < N_KP_CONSTANTS; ++i) {
-								ahrs_init(&ahrs[i], &accel_g, kp[i]);
+							for (uint8_t i = 0; i < N_KI_CONSTANTS; ++i) {
+								ahrs_init(&ahrs[i], &accel_g, AHRS_KP, ki[i]);
 							}
 						}
 					}
@@ -252,7 +253,7 @@ int main(void)
 					}
 
 					gyro_radps = vector_3f_scale(&gyro_dps, DEG2RAD_F);
-					for (uint8_t i = 0; i < N_KP_CONSTANTS; ++i) {
+					for (uint8_t i = 0; i < N_KI_CONSTANTS; ++i) {
 						ahrs_update(&ahrs[i], &gyro_radps, &accel_g, (mpu_data.sample_time_us) / US_IN_S);
 						vector_3f_t quaternion_orientation_rad = quaternion_to_euler(&ahrs[i].orientation);
 						quaternion_orientation_deg[i] = vector_3f_scale(&quaternion_orientation_rad, RAD2DEG_F);

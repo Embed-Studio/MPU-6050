@@ -26,8 +26,10 @@ typedef struct {
 typedef struct {
     quaternion_t orientation;
     float 		kp;
+    float 		ki;
     vector_3f_t gravity_estimated;
     vector_3f_t error;
+    vector_3f_t bias;
     float		error_norm;
     float 		gravity_error_deg;
 } ahrs_t;
@@ -81,7 +83,7 @@ void ahrs_complementary_filter(const ahrs_attitude_t* const accel_attitude,
  * @param kp Accelerometer influence
  */
 void ahrs_init(ahrs_t* const ahrs, const vector_3f_t* const accel,
-    const float kp);
+    const float kp, const float ki);
 
 /**
  * @brief Updates the AHRS orientation estimate.

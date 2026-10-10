@@ -30,6 +30,16 @@ static inline float rad_to_deg(float rad)
     return rad * RAD2DEG_F;
 }
 
+#define CLAMP(value, min, max)                    \
+({                                                \
+    __typeof__(value) _v = (value);               \
+    __typeof__(min)   _min = (min);               \
+    __typeof__(max)   _max = (max);               \
+                                                  \
+    (_v < _min) ? _min :                          \
+    ((_v > _max) ? _max : _v);                    \
+})
+
 /* Exported macro ------------------------------------------------------------*/
 /* Exported functions --------------------------------------------------------*/
 

@@ -75,7 +75,7 @@ static const vector_3f_t gravity_world =
 
 
 void ahrs_init(ahrs_t* const ahrs, const vector_3f_t* const accel,
-    const float kp)
+    const float kp, const float ki)
 {
     const vector_3f_t a = vector_3f_normalize(accel);
     const vector_3f_t euler = {
@@ -85,6 +85,7 @@ void ahrs_init(ahrs_t* const ahrs, const vector_3f_t* const accel,
     };
     ahrs->orientation = quaternion_from_euler(&euler);
     ahrs->kp = kp;
+    ahrs->ki = ki;
 }
 
 
@@ -99,9 +100,14 @@ void ahrs_update(ahrs_t* const ahrs, const vector_3f_t* const gyro_radps,
 
     ahrs->error =
     		vector_3f_cross(&accel_normalized, &ahrs->gravity_estimated);
-    ahrs->gravity_error_deg = rad_to_deg(acosf(vector_3f_dot(&accel_normalized, &ahrs->gravity_estimated)));
+
+    vector_3f_t bias_delta = vector_3f_scale(&ahrs->error, ahrs->ki * dt_s);
+    ahrs->bias = vector_3f_sub(&ahrs->bias, &bias_delta);
+    float cos_error = CLAMP(vector_3f_dot(&accel_normalized, &ahrs->gravity_estimated), -1.0f, 1.0f);
+    ahrs->gravity_error_deg = rad_to_deg(acosf(cos_error));
     ahrs->error_norm = vector_3f_norm(&ahrs->error);
     const vector_3f_t correction = vector_3f_scale(&ahrs->error, ahrs->kp);
-    const vector_3f_t gyro_corrected = vector_3f_add(gyro_radps, &correction);
+    const vector_3f_t gyro_biased = vector_3f_sub(gyro_radps, &ahrs->bias);
+    const vector_3f_t gyro_corrected = vector_3f_add(&gyro_biased, &correction);
     quaternion_integrate(&ahrs->orientation, &gyro_corrected, dt_s);
 }
