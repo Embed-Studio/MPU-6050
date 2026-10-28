@@ -25,7 +25,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "mpu6050.h"
-#include "timer.h"
+#include "embedtools/time_dwt.h"
 #include "ahrs.h"
 #include "es_math.h"
 
@@ -34,7 +34,7 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 typedef struct {
-	timer_interval_t sample_timer;
+	et_dwt_interval_t sample_timer;
 	uint32_t 	sample_time_ticks;
 	float		sample_time_fl_us;
 	uint16_t 	sample_time_us;
@@ -164,8 +164,8 @@ int main(void)
 	/* After the MX_*_Init() calls, which set the EXTI priority and grouping. */
 	Timing_ConfigureInterruptPriorities();
 
-	timer_init();
-	timer_interval_init(&timings.sample_timer);
+	et_dwt_init(SystemCoreClock);
+	et_dwt_interval_init(&timings.sample_timer);
 	MPU6050_Calibration_Init(&mpu_cal);
 	MPU6050_Gyro_Zero_Init(&gyro_zero);
 	i2c_status = MPU6050_Init(&hi2c1);
@@ -195,12 +195,12 @@ int main(void)
 
 		if (mpu_data_ready) {
 			mpu_data_ready = 0; // Clear software flag
-			TIMER_START(i2c_exchange);
+			ET_DWT_START(i2c_exchange);
 			i2c_status = MPU6050_Read_All(&hi2c1, &mpu_data, &mpu_int_status);
-			timings.data_exchange_time_us = timer_us(TIMER_ELAPSED(i2c_exchange));
+			timings.data_exchange_time_us = et_dwt_to_us(ET_DWT_ELAPSED(i2c_exchange));
 			if (i2c_status == HAL_OK) {
 				if (mpu_int_status & MPU6050_INT_DATA_RDY) {
-					TIMER_START(sig_processing);
+					ET_DWT_START(sig_processing);
 					mpu_data.sample_time_us = timings.sample_time_fl_us;
 
 					MPU6050_Apply_Calibration(&mpu_cal, &mpu_data, &accel_g);
@@ -260,7 +260,7 @@ int main(void)
 					}
 
 					++mpu_data.sample_count;
-					timings.signal_processing_us = timer_us(TIMER_ELAPSED(sig_processing));
+					timings.signal_processing_us = et_dwt_to_us(ET_DWT_ELAPSED(sig_processing));
 
 				} else {
 					++cnt_stale_reads;
@@ -361,9 +361,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == MPU6050_INT_Pin) { // Ensure this matches your CubeMX user label for PB8
         mpu_data_ready = 1;
-        timings.sample_time_ticks = timer_interval_update(&timings.sample_timer);
-        timings.sample_time_us = timer_us(timings.sample_time_ticks);
-        timings.sample_time_fl_us = timer_us_f(timings.sample_time_ticks);
+        timings.sample_time_ticks = et_dwt_interval_update(&timings.sample_timer);
+        timings.sample_time_us = et_dwt_to_us_u32(timings.sample_time_ticks);
+        timings.sample_time_fl_us = et_dwt_to_us(timings.sample_time_ticks);
     }
 }
 /* USER CODE END 4 */

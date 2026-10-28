@@ -32,6 +32,11 @@
 	</natures>
 	<linkedResources>
 		<link>
+			<name>EmbedTools</name>
+			<type>2</type>
+			<locationURI>WORKING_FOLDER/libs/EmbedTools</locationURI>
+		</link>
+		<link>
 			<name>Inc</name>
 			<type>2</type>
 			<locationURI>WORKING_FOLDER/Core/Inc</locationURI>
@@ -40,11 +45,6 @@
 			<name>MPU-6050.ioc</name>
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/MPU-6050.ioc</locationURI>
-		</link>
-		<link>
-			<name>Application/libs/timer</name>
-			<type>2</type>
-			<locationURI>PARENT-1-PROJECT_LOC/timer</locationURI>
 		</link>
 		<link>
 			<name>Drivers/CMSIS/system_stm32f4xx.c</name>

@@ -1,0 +1,3 @@
+[submodule "libs/EmbedTools"]
+	path = libs/EmbedTools
+	url = git@github.com:Embed-Studio/EmbedTools.git
